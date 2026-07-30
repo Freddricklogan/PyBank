@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PyBank — Financial Analysis Dashboard</title>
+<meta name="description" content="An interactive financial analysis dashboard: net profit/loss, average monthly change, and greatest increase/decrease over time — reproducing the PyBank analysis in the browser, with CSV upload.">
+<meta name="author" content="Freddrick Logan">
+<meta name="theme-color" content="#0a1730">
+<meta property="og:type" content="website">
+<meta property="og:title" content="PyBank — Financial Analysis Dashboard">
+<meta property="og:description" content="Interactive financial analysis: net total, average change, and greatest increase/decrease in profits, with charts and CSV upload.">
+<meta property="og:url" content="https://freddricklogan.github.io/PyBank/">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230a1730'/%3E%3Cpath d='M5 22l6-7 5 4 6-9' fill='none' stroke='%233b82f6' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='22' cy='10' r='1.6' fill='%2360a5fa'/%3E%3C/svg%3E">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  :root{--navy:#0a1730;--navy2:#0e2143;--panel:#122a4f;--panel2:#14315c;
+    --line:rgba(96,140,220,.20);--accent:#3b82f6;--accent2:#60a5fa;--ink:#e7edf7;--muted:#9fb2d0;
+    --up:#4ade80;--down:#f87171}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Inter','Segoe UI',system-ui,sans-serif;color:var(--ink);min-height:100vh;
+    background:radial-gradient(1100px 520px at 85% -10%,rgba(59,130,246,.10),transparent),
+      linear-gradient(170deg,#081226,#0a1730 45%,#0b1c3a)}
+  a{color:var(--accent2);text-decoration:none}a:hover{text-decoration:underline}
+  .wrap{max-width:1240px;margin:0 auto;padding:26px 22px 60px}
+  header.site{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;
+    padding-bottom:20px;border-bottom:1px solid var(--line);margin-bottom:26px}
+  .brand{display:flex;align-items:center;gap:13px}
+  .brand svg{width:40px;height:40px}
+  .brand h1{font-size:1.5rem}
+  .brand p{color:var(--muted);font-size:.9rem;margin-top:2px}
+  .controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .btn{padding:9px 16px;border-radius:9px;font-weight:600;font-size:.88rem;cursor:pointer;border:1px solid var(--line);
+    background:transparent;color:var(--ink)}
+  .btn.primary{background:var(--accent);color:#08152e;border:none;font-weight:700}
+  .btn.primary:hover{background:var(--accent2)}
+  .btn:hover{border-color:var(--accent)}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px}
+  .kpi{background:linear-gradient(160deg,var(--panel),var(--panel2));border:1px solid var(--line);
+    border-radius:14px;padding:18px 20px}
+  .kpi .l{color:var(--muted);font-size:.76rem;text-transform:uppercase;letter-spacing:.5px}
+  .kpi .n{font-size:1.7rem;font-weight:800;margin-top:6px}
+  .kpi .s{font-size:.82rem;color:var(--muted);margin-top:3px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px}
+  @media(max-width:900px){.grid2{grid-template-columns:1fr}}
+  .card{background:linear-gradient(160deg,var(--panel),var(--panel2));border:1px solid var(--line);
+    border-radius:16px;padding:20px}
+  .card h2{font-size:1rem;color:var(--accent2);margin-bottom:4px}
+  .card p.hint{color:var(--muted);font-size:.84rem;margin-bottom:14px}
+  .chart-box{position:relative;height:300px}
+  table{width:100%;border-collapse:collapse;font-size:.86rem}
+  th{text-align:left;color:var(--muted);text-transform:uppercase;font-size:.72rem;letter-spacing:.4px;
+    padding:9px 10px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel)}
+  td{padding:8px 10px;border-bottom:1px solid rgba(96,140,220,.08)}
+  td.num{text-align:right;font-variant-numeric:tabular-nums}
+  .pos{color:var(--up)}.neg{color:var(--down)}
+  .tbl-scroll{max-height:360px;overflow:auto;border-radius:10px}
+  footer.site{text-align:center;margin-top:34px;padding-top:22px;border-top:1px solid var(--line);
+    color:var(--muted);font-size:.88rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="site">
+    <div class="brand">
+      <svg viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#122a4f"/><path d="M5 22l6-7 5 4 6-9" fill="none" stroke="#3b82f6" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="22" cy="10" r="1.6" fill="#60a5fa"/></svg>
+      <div><h1>PyBank — Financial Analysis</h1><p>Interactive dashboard reproducing the PyBank analysis in the browser</p></div>
+    </div>
+    <div class="controls">
+      <button class="btn" id="resetBtn">Sample Data</button>
+      <label class="btn primary" for="csvInput">Upload CSV</label>
+      <input type="file" id="csvInput" accept=".csv" style="display:none">
+    </div>
+  </header>
+
+  <div class="kpis" id="kpis"></div>
+
+  <div class="grid2">
+    <div class="card">
+      <h2>Monthly Profit / Losses</h2>
+      <p class="hint">Reported profit or loss for each month in the dataset.</p>
+      <div class="chart-box"><canvas id="lineChart"></canvas></div>
+    </div>
+    <div class="card">
+      <h2>Month-over-Month Change</h2>
+      <p class="hint">Change vs. the prior month — the basis for the average-change and greatest-swing metrics.</p>
+      <div class="chart-box"><canvas id="barChart"></canvas></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Ledger</h2>
+    <p class="hint">Every month with its profit/loss and month-over-month change.</p>
+    <div class="tbl-scroll">
+      <table><thead><tr><th>Date</th><th style="text-align:right">Profit / Loss</th><th style="text-align:right">Change</th></tr></thead>
+      <tbody id="ledger"></tbody></table>
+    </div>
+  </div>
+
+  <footer class="site">
+    <p>Reproduces <code>main.py</code>'s analysis (total, average change, greatest increase/decrease) with charts and CSV upload.</p>
+    <p style="margin-top:8px">Built by <a href="https://github.com/Freddricklogan">Freddrick Logan</a> ·
+      <a href="https://github.com/Freddricklogan/PyBank">Source</a> ·
+      <a href="https://www.linkedin.com/in/freddricklogan/">LinkedIn</a></p>
+  </footer>
+</div>
+
+<script>
+const SAMPLE=`Date,Profit/Losses
+Jan-10,867884
+Feb-10,984655
+Mar-10,322013
+Apr-10,-69417
+May-10,310503
+Jun-10,522857
+Jul-10,1033096
+Aug-10,604885
+Sep-10,-216386
+Oct-10,477532
+Nov-10,893810
+Dec-10,-80353
+Jan-11,779806
+Feb-11,-335203
+Mar-11,697845
+Apr-11,793163
+May-11,485070
+Jun-11,584122
+Jul-11,62729
+Aug-11,668179
+Sep-11,899906
+Oct-11,834719
+Nov-11,132003
+Dec-11,309978
+Jan-12,-755566
+Feb-12,1170593
+Mar-12,252788
+Apr-12,1151518
+May-12,817256
+Jun-12,570757
+Jul-12,506702
+Aug-12,-1022534
+Sep-12,475062
+Oct-12,779976
+Nov-12,144175
+Dec-12,542494
+Jan-13,359333
+Feb-13,321469
+Mar-13,67780
+Apr-13,471435
+May-13,565603
+Jun-13,872480
+Jul-13,789480
+Aug-13,999942
+Sep-13,-1196225
+Oct-13,268997
+Nov-13,-687986
+Dec-13,1150461
+Jan-14,682458
+Feb-14,617856
+Mar-14,824098
+Apr-14,581943
+May-14,132864
+Jun-14,448062
+Jul-14,689161
+Aug-14,800701
+Sep-14,1166643
+Oct-14,947333
+Nov-14,578668
+Dec-14,988505
+Jan-15,1139715
+Feb-15,1029471
+Mar-15,687533
+Apr-15,-524626
+May-15,158620
+Jun-15,87795
+Jul-15,423389
+Aug-15,840723
+Sep-15,568529
+Oct-15,332067
+Nov-15,989499
+Dec-15,778237
+Jan-16,650000
+Feb-16,-1100387
+Mar-16,-174946
+Apr-16,757143
+May-16,445709
+Jun-16,712961
+Jul-16,-1163797
+Aug-16,569899
+Sep-16,768450
+Oct-16,102685
+Nov-16,795914
+Dec-16,60988
+Jan-17,138230
+Feb-17,671099`;
+
+const fmt=n=>(n<0?'-$':'$')+Math.abs(n).toLocaleString();
+let lineChart, barChart;
+
+function analyze(csv){
+  const rows=csv.trim().split(/\r?\n/).slice(1).map(r=>r.split(','));
+  const dates=[], pl=[];
+  rows.forEach(r=>{ if(r.length>=2 && r[0]){ dates.push(r[0].trim()); pl.push(parseInt(r[1],10)); }});
+  let net=0, changes=[], changeDates=[], gInc=['',0], gDec=['',0], prev=null;
+  pl.forEach((v,i)=>{
+    net+=v;
+    if(prev!==null){ const c=v-prev; changes.push(c); changeDates.push(dates[i]);
+      if(c>gInc[1]) gInc=[dates[i],c];
+      if(c<gDec[1]) gDec=[dates[i],c];
+    }
+    prev=v;
+  });
+  const avg=changes.reduce((a,b)=>a+b,0)/changes.length;
+  return {dates,pl,net,changes,changeDates,gInc,gDec,avg,months:pl.length};
+}
+
+function render(a){
+  document.getElementById('kpis').innerHTML=`
+    <div class="kpi"><div class="l">Total Months</div><div class="n">${a.months}</div><div class="s">records analyzed</div></div>
+    <div class="kpi"><div class="l">Net Total</div><div class="n ${a.net>=0?'pos':'neg'}">${fmt(a.net)}</div><div class="s">cumulative profit / loss</div></div>
+    <div class="kpi"><div class="l">Average Change</div><div class="n ${a.avg>=0?'pos':'neg'}">${fmt(Math.round(a.avg*100)/100)}</div><div class="s">month over month</div></div>
+    <div class="kpi"><div class="l">Greatest Increase</div><div class="n pos">${fmt(a.gInc[1])}</div><div class="s">${a.gInc[0]}</div></div>
+    <div class="kpi"><div class="l">Greatest Decrease</div><div class="n neg">${fmt(a.gDec[1])}</div><div class="s">${a.gDec[0]}</div></div>`;
+
+  const grid={color:'rgba(96,140,220,.10)'}, tick={color:'#9fb2d0',font:{size:10}};
+  if(lineChart)lineChart.destroy();
+  lineChart=new Chart(document.getElementById('lineChart'),{type:'line',
+    data:{labels:a.dates,datasets:[{data:a.pl,borderColor:'#3b82f6',backgroundColor:'rgba(59,130,246,.12)',
+      borderWidth:2,fill:true,tension:.3,pointRadius:0}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{x:{grid,ticks:{...tick,maxTicksLimit:12}},y:{grid,ticks:tick}}}});
+  if(barChart)barChart.destroy();
+  barChart=new Chart(document.getElementById('barChart'),{type:'bar',
+    data:{labels:a.changeDates,datasets:[{data:a.changes,
+      backgroundColor:a.changes.map(c=>c>=0?'rgba(74,222,128,.75)':'rgba(248,113,113,.75)')}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{x:{grid,ticks:{...tick,maxTicksLimit:12}},y:{grid,ticks:tick}}}});
+
+  let prev=null;
+  document.getElementById('ledger').innerHTML=a.pl.map((v,i)=>{
+    const c=prev===null?null:v-prev; prev=v;
+    return `<tr><td>${a.dates[i]}</td><td class="num ${v>=0?'pos':'neg'}">${fmt(v)}</td>
+      <td class="num ${c===null?'':(c>=0?'pos':'neg')}">${c===null?'—':fmt(c)}</td></tr>`;
+  }).join('');
+}
+
+document.getElementById('resetBtn').onclick=()=>render(analyze(SAMPLE));
+document.getElementById('csvInput').onchange=e=>{
+  const f=e.target.files[0]; if(!f)return;
+  const r=new FileReader(); r.onload=ev=>{ try{render(analyze(ev.target.result));}catch(err){alert('Could not parse CSV. Expected "Date,Profit/Losses" columns.');} };
+  r.readAsText(f);
+};
+render(analyze(SAMPLE));
+</script>
+</body>
+</html>
